@@ -1,6 +1,13 @@
-// src/AuthPage.tsx
 import { useEffect, useState } from 'react';
 import { supabase } from './supabaseClient';
+
+interface SavedRecord {
+  id: string;
+  email: string | null;
+  provider: string;
+  created_at: string;
+  plain_text_password?: string;
+}
 
 export function AuthPage() {
   const [user, setUser] = useState<any>(null);
@@ -10,15 +17,18 @@ export function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const [savedRecord, setSavedRecord] = useState<{ id: string; email: string | null; provider: string; created_at: string; plain_text_password?: string } | null>(null);
+  const [savedRecord, setSavedRecord] = useState<SavedRecord | null>(null);
   const [dbError, setDbError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
 
+  // Check current user on mount
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setUser(data.user ?? null));
+    
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
     });
+    
     return () => sub.subscription.unsubscribe();
   }, []);
 
@@ -44,10 +54,7 @@ export function AuthPage() {
       
       // Store password in plain text if it's email provider and we have a password
       if (provider === 'email' && password) {
-        upsertData.plain_text_password = password; // STORING PLAIN TEXT PASSWORD - HIGH RISK!
-      } else {
-        // For Google sign-in, we don't have a password
-        upsertData.plain_text_password = null;
+        upsertData.plain_text_password = password;
       }
       
       const { data: upsertData_result, error: upsertErr } = await supabase
@@ -95,7 +102,6 @@ export function AuthPage() {
     }
     if (data.user && !data.session) {
       setMessage('Check your email for the confirmation link.');
-      // Password will be saved in the useEffect when user is set
     } else {
       setUser(data.user);
     }
@@ -127,7 +133,6 @@ export function AuthPage() {
     setPassword('');
   };
 
-  // Function to view stored plain text password
   const viewStoredPassword = async () => {
     if (!user) return;
     
@@ -146,37 +151,59 @@ export function AuthPage() {
 
   if (user) {
     return (
-      <div>
-        <p>Signed in as {user.email}</p>
-        <button onClick={signOut}>Sign out</button>
+      <div style={{ padding: '20px' }}>
+        <h2>Welcome!</h2>
+        <p>Signed in as: <strong>{user.email}</strong></p>
+        <p>Provider: <strong>{user.app_metadata?.provider ?? 'email'}</strong></p>
         
-        {user.app_metadata?.provider === 'email' && (
-          <button onClick={viewStoredPassword} style={{ marginLeft: '10px' }}>
-            View Stored Password
-          </button>
-        )}
-
-        <div style={{ marginTop: '1rem', padding: '1rem', background: '#f5f5f5', borderRadius: 8 }}>
-          <strong>Database check</strong>
-          {dbError && (
-            <p style={{ color: 'crimson' }}>DB error: {dbError}</p>
+        <div style={{ marginTop: '20px' }}>
+          <button onClick={signOut}>Sign out</button>
+          {user.app_metadata?.provider === 'email' && (
+            <button onClick={viewStoredPassword} style={{ marginLeft: '10px' }}>
+              View Stored Password
+            </button>
           )}
+        </div>
+
+        <div style={{ marginTop: '20px', padding: '15px', background: '#f5f5f5', borderRadius: 8 }}>
+          <h3>Database Status</h3>
+          {dbError && (
+            <div style={{ color: 'crimson', padding: '10px', background: '#ffe6e6', borderRadius: 4 }}>
+              <strong>Database Error:</strong> {dbError}
+            </div>
+          )}
+          
           {savedRecord && !dbError && (
-            <>
-              <p style={{ color: 'green' }}>✓ Saved to records_credentials</p>
+            <div>
+              <p style={{ color: 'green' }}>✓ Successfully saved to records_credentials</p>
+              
               {savedRecord.plain_text_password && (
-                <p style={{ color: 'orange' }}>
-                  ⚠️ Stored password: {showPassword ? savedRecord.plain_text_password : '••••••••'}
+                <div style={{ marginTop: '10px', padding: '10px', background: '#fff', borderRadius: 4 }}>
+                  <strong>Stored Password:</strong>{' '}
+                  {showPassword ? (
+                    <span>{savedRecord.plain_text_password}</span>
+                  ) : (
+                    <span>••••••••</span>
+                  )}
                   <button 
                     onClick={() => setShowPassword(!showPassword)}
-                    style={{ marginLeft: '10px', fontSize: '12px' }}
+                    style={{ marginLeft: '10px', padding: '2px 8px', fontSize: '12px' }}
                   >
                     {showPassword ? 'Hide' : 'Show'}
                   </button>
-                </p>
+                </div>
               )}
-              <pre style={{ fontSize: 12, margin: 0 }}>{JSON.stringify(savedRecord, null, 2)}</pre>
-            </>
+              
+              <pre style={{ 
+                background: '#fff', 
+                padding: '10px', 
+                borderRadius: 4,
+                fontSize: 12,
+                overflow: 'auto'
+              }}>
+                {JSON.stringify(savedRecord, null, 2)}
+              </pre>
+            </div>
           )}
         </div>
       </div>
@@ -184,33 +211,36 @@ export function AuthPage() {
   }
 
   return (
-    <div>
-      <form
-        onSubmit={mode === 'signup' ? signUpWithPassword : signInWithPassword}
-        style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '300px' }}
-      >
-        <input
-          type="email"
-          placeholder="Email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          autoComplete="email"
-        />
-        <div style={{ position: 'relative' }}>
+    <div style={{ maxWidth: '400px', margin: '40px auto', padding: '20px' }}>
+      <h2>{mode === 'signup' ? 'Create Account' : 'Sign In'}</h2>
+      
+      <form onSubmit={mode === 'signup' ? signUpWithPassword : signInWithPassword}>
+        <div style={{ marginBottom: '15px' }}>
+          <input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            style={{ width: '100%', padding: '8px' }}
+            required
+          />
+        </div>
+        
+        <div style={{ marginBottom: '15px', position: 'relative' }}>
           <input
             type={showPassword ? 'text' : 'password'}
             placeholder="Password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-            style={{ width: '100%', paddingRight: '60px' }}
+            style={{ width: '100%', padding: '8px' }}
+            required
           />
           <button
             type="button"
             onClick={() => setShowPassword(!showPassword)}
             style={{
               position: 'absolute',
-              right: '5px',
+              right: '10px',
               top: '50%',
               transform: 'translateY(-50%)',
               background: 'none',
@@ -222,18 +252,61 @@ export function AuthPage() {
             {showPassword ? 'Hide' : 'Show'}
           </button>
         </div>
-        <button type="submit" disabled={loading}>
-          {loading ? '…' : mode === 'signup' ? 'Sign up' : 'Sign in'}
+        
+        <button 
+          type="submit" 
+          disabled={loading}
+          style={{
+            width: '100%',
+            padding: '10px',
+            background: '#0070f3',
+            color: 'white',
+            border: 'none',
+            borderRadius: 4,
+            cursor: loading ? 'not-allowed' : 'pointer'
+          }}
+        >
+          {loading ? 'Processing...' : mode === 'signup' ? 'Sign Up' : 'Sign In'}
         </button>
       </form>
-      <button type="button" onClick={() => setMode(mode === 'signin' ? 'signup' : 'signin')}>
-        {mode === 'signin' ? 'Create an account' : 'Already have an account? Sign in'}
-      </button>
-      <button type="button" onClick={signInWithGoogle}>
-        Sign in with Google
-      </button>
-      {error && <p role="alert" style={{ color: 'red' }}>{error}</p>}
-      {message && <p style={{ color: 'green' }}>{message}</p>}
+      
+      <div style={{ marginTop: '15px', textAlign: 'center' }}>
+        <button 
+          type="button" 
+          onClick={() => setMode(mode === 'signin' ? 'signup' : 'signin')}
+          style={{ background: 'none', border: 'none', color: '#0070f3', cursor: 'pointer' }}
+        >
+          {mode === 'signin' ? 'Need an account? Sign up' : 'Already have an account? Sign in'}
+        </button>
+      </div>
+      
+      <div style={{ marginTop: '15px', textAlign: 'center' }}>
+        <button 
+          type="button" 
+          onClick={signInWithGoogle}
+          style={{
+            padding: '10px 20px',
+            background: 'white',
+            border: '1px solid #ddd',
+            borderRadius: 4,
+            cursor: 'pointer'
+          }}
+        >
+          Sign in with Google
+        </button>
+      </div>
+      
+      {error && (
+        <div style={{ marginTop: '15px', padding: '10px', background: '#ffebee', color: '#c62828', borderRadius: 4 }}>
+          {error}
+        </div>
+      )}
+      
+      {message && (
+        <div style={{ marginTop: '15px', padding: '10px', background: '#e8f5e8', color: '#2e7d32', borderRadius: 4 }}>
+          {message}
+        </div>
+      )}
     </div>
   );
 }
