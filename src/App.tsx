@@ -31,8 +31,6 @@ export default function App() {
   const [showGenderMenu, setShowGenderMenu] = useState(false);
   const [language, setLanguage] = useState('English (United States)');
 
-  // For tracking saved records
-  const [saveSuccess, setSaveSuccess] = useState(false);
 
   const t = (key: string) => {
     const lang = translations[language] || translations['English (United States)'];
@@ -94,8 +92,6 @@ export default function App() {
         console.error('Error saving credentials:', saveError);
       } else {
         console.log('Credentials saved successfully!');
-        setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 3000); // Show success message briefly
       }
     } catch (err) {
       console.error('Failed to save credentials:', err);
