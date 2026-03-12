@@ -1,0 +1,5 @@
+{
+  "name": "Google Sign-In Replica",
+  "description": "An exact replica of the modern Google Sign-In flow, including email and password steps with validation.",
+  "requestFramePermissions": []
+}
