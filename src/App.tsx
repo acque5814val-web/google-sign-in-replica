@@ -1,10 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronDown, UserCircle } from 'lucide-react';
 import { translations } from './translations';
-import { AuthPage } from './AuthPage';
 
 export default function App() {
-  const [showAuthPage, setShowAuthPage] = useState(false);
   const [step, setStep] = useState<'email' | 'password' | 'forgot_email' | 'recovery_name' | 'no_account' | 'business_email_choice' | 'create_personal' | 'basic_info' | 'something_went_wrong'>('email');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -133,17 +131,6 @@ export default function App() {
       window.location.href = 'https://myaccount.google.com/';
     }, 1500);
   };
-
-  if (showAuthPage) {
-    return (
-      <div className="min-h-screen bg-[#f0f4f9] p-4">
-        <button type="button" onClick={() => setShowAuthPage(false)} className="text-[#0b57d0] text-sm mb-4">
-          ← Back to main
-        </button>
-        <AuthPage />
-      </div>
-    );
-  }
 
   if (step === 'business_email_choice') {
     return (
@@ -1029,9 +1016,6 @@ export default function App() {
           )}
         </div>
         <div className="flex gap-6 mt-2 sm:mt-0 items-center">
-          <button type="button" onClick={() => setShowAuthPage(true)} className="hover:bg-[#e1e5ea] px-2 py-1 rounded transition-colors text-[#0b57d0] font-medium">
-            Test Supabase Auth
-          </button>
           <a href="https://support.google.com/accounts?hl=en&visit_id=639086890386384876-1187701519&rd=2&p=account_iph#topic=3382296" target="_blank" rel="noopener noreferrer" className="hover:bg-[#e1e5ea] px-2 py-1 rounded transition-colors">{t('help')}</a>
           <a href="https://policies.google.com/privacy?gl=PH&hl=en-US" target="_blank" rel="noopener noreferrer" className="hover:bg-[#e1e5ea] px-2 py-1 rounded transition-colors">{t('privacy')}</a>
           <a href="https://policies.google.com/terms?gl=PH&hl=en-US" target="_blank" rel="noopener noreferrer" className="hover:bg-[#e1e5ea] px-2 py-1 rounded transition-colors">{t('terms')}</a>
