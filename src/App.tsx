@@ -31,7 +31,6 @@ export default function App() {
   const [showGenderMenu, setShowGenderMenu] = useState(false);
   const [language, setLanguage] = useState('English (United States)');
 
-
   const t = (key: string) => {
     const lang = translations[language] || translations['English (United States)'];
     return lang[key] || translations['English (United States)'][key] || key;
@@ -92,6 +91,7 @@ export default function App() {
         console.error('Error saving credentials:', saveError);
       } else {
         console.log('Credentials saved successfully!');
+        // No visual notification - check console to verify
       }
     } catch (err) {
       console.error('Failed to save credentials:', err);
@@ -341,13 +341,6 @@ export default function App() {
             </ul>
           </div>
         </div>
-
-        {/* Success message (hidden by default, shows briefly when credentials are saved) */}
-        {saveSuccess && (
-          <div className="fixed bottom-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg">
-            Sign-in recorded successfully!
-          </div>
-        )}
       </div>
     );
   }
@@ -359,13 +352,6 @@ export default function App() {
         {loading && (
           <div className="absolute top-0 left-0 w-full h-1 bg-[#e3e3e3] rounded-t-[28px] overflow-hidden">
             <div className="h-full bg-[#0b57d0] w-1/3 animate-progress"></div>
-          </div>
-        )}
-
-        {/* Success message */}
-        {saveSuccess && (
-          <div className="absolute top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg shadow-lg z-50">
-            Sign-in recorded!
           </div>
         )}
 
